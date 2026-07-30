@@ -42,14 +42,6 @@
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-  <script type="module">
-    import { requireSession, logout } from './js/auth.js';
-
-    (async () => {
-      const session = await requireSession();
-      if (!session) return;
-      document.getElementById('logout-btn').addEventListener('click', logout);
-    })();
-  </script>
+  <script type="module" src="js/dashboard.js"></script>
 </body>
 </html>
