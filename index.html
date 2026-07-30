@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <title>Dashboard Keuangan</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Dashboard Keuangan</h1>
+    <div class="topbar-controls">
+      <label for="month-select">Bulan</label>
+      <select id="month-select"></select>
+      <button id="logout-btn">Keluar</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="summary">
+      <h2>Ringkasan Bulanan</h2>
+      <p id="grand-total" class="grand-total"></p>
+      <table id="summary-table">
+        <thead><tr><th>#</th><th>Outlet</th><th>Total Omzet</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="ranking">
+      <h2>Ranking Harian</h2>
+      <label for="ranking-date">Tanggal</label>
+      <input type="date" id="ranking-date" />
+      <table id="ranking-table">
+        <thead><tr><th>Peringkat</th><th>Outlet</th><th>Omzet</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="trend">
+      <h2>Tren per Outlet</h2>
+      <div id="trend-grid" class="trend-grid"></div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script type="module">
+    import { requireSession, logout } from './js/auth.js';
+
+    (async () => {
+      const session = await requireSession();
+      if (!session) return;
+      document.getElementById('logout-btn').addEventListener('click', logout);
+    })();
+  </script>
+</body>
+</html>
