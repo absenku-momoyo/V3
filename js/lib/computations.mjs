@@ -31,15 +31,19 @@ export function formatRupiahCompact(value) {
   const sign = n < 0 ? '-' : '';
   const abs = Math.abs(n);
 
-  const scale = (divisor, suffix) => {
+  // Precision ladder: miliar keeps 2 decimals (1 would collapse 1,57 M to
+  // 1,6 M and lose real signal on the headline figure), juta keeps 1.
+  const scale = (divisor, suffix, decimals) => {
     const scaled = abs / divisor;
-    // 1 decimal, but drop a trailing ",0" so round numbers read cleanly.
-    const text = scaled.toFixed(1).replace(/\.0$/, '').replace('.', ',');
+    const text = scaled
+      .toFixed(decimals)
+      .replace(/\.?0+$/, '')   // drop trailing zeros AND a bare trailing dot
+      .replace('.', ',');
     return `${sign}Rp ${text} ${suffix}`;
   };
 
-  if (abs >= 1e9) return scale(1e9, 'M');
-  if (abs >= 1e6) return scale(1e6, 'jt');
+  if (abs >= 1e9) return scale(1e9, 'M', 2);
+  if (abs >= 1e6) return scale(1e6, 'jt', 1);
   if (abs >= 1e3) return `${sign}Rp ${Math.round(abs / 1e3)} rb`;
   return `${sign}Rp ${Math.round(abs)}`;
 }

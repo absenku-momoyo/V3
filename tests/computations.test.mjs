@@ -63,12 +63,18 @@ test('formatRupiahCompact abbreviates to rb / jt / M with Indonesian comma decim
   assert.equal(formatRupiahCompact(442301845), 'Rp 442,3 jt');
   assert.equal(formatRupiahCompact(1405632), 'Rp 1,4 jt');
   assert.equal(formatRupiahCompact(94000), 'Rp 94 rb');
-  assert.equal(formatRupiahCompact(1234567890), 'Rp 1,2 M');
+  assert.equal(formatRupiahCompact(1234567890), 'Rp 1,23 M');
 });
 
-test('formatRupiahCompact drops a trailing ",0" so round numbers stay clean', () => {
+test('formatRupiahCompact keeps 2 decimals at miliar scale so the headline keeps signal', () => {
+  // 1 decimal would collapse this to "Rp 1,6 M" and hide ~7 juta of movement.
+  assert.equal(formatRupiahCompact(1567310181), 'Rp 1,57 M');
+});
+
+test('formatRupiahCompact drops trailing zeros so round numbers stay clean', () => {
   assert.equal(formatRupiahCompact(2000000), 'Rp 2 jt');
   assert.equal(formatRupiahCompact(3000000000), 'Rp 3 M');
+  assert.equal(formatRupiahCompact(1500000000), 'Rp 1,5 M'); // not "1,50 M"
 });
 
 test('formatRupiahCompact handles zero, small values, and negatives', () => {

@@ -353,9 +353,11 @@ main > *:nth-child(5) { animation-delay: .26s; }
 /* ============================================================
    Stat cards
    ============================================================ */
+/* Four cards on one row; the hero simply gets a wider track rather than a
+   column span (a span would total 5 tracks in a 4-track grid and wrap). */
 .stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: 1.55fr 1fr 1fr 1fr;
   gap: clamp(12px, 1.5vw, 16px);
 }
 
@@ -369,9 +371,8 @@ main > *:nth-child(5) { animation-delay: .26s; }
   min-width: 0;
 }
 
-/* the hero card carries the brand accent and spans two columns */
+/* the hero card carries the brand accent */
 .stat--hero {
-  grid-column: span 2;
   background:
     radial-gradient(120% 140% at 0% 0%, var(--brand-wash-2), transparent 58%),
     var(--surface);
@@ -510,11 +511,13 @@ main > *:nth-child(5) { animation-delay: .26s; }
 }
 .data-table tbody tr:hover { background: var(--brand-wash-2); }
 
-.col-rank { width: 46px; text-align: center; }
-.col-num  { text-align: right; white-space: nowrap; }
+.col-rank { width: 46px; }
 .col-share { width: 34%; min-width: 150px; }
 
+/* element+class specificity, so these beat the generic `.data-table th` rule */
+.data-table th.col-rank,
 .data-table td.col-rank { text-align: center; }
+.data-table th.col-num { text-align: right; }
 .data-table td.col-num {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -534,10 +537,10 @@ main > *:nth-child(5) { animation-delay: .26s; }
   color: var(--ink-2);
   background: var(--surface-sunk);
 }
-/* top three earn the accent, in descending strength */
-tr:nth-child(1) .rank-badge { background: var(--brand); color: #fff; }
-tr:nth-child(2) .rank-badge { background: var(--brand-wash); color: var(--brand-ink); }
-tr:nth-child(3) .rank-badge { background: var(--brand-wash-2); color: var(--brand-ink); }
+/* top three earn the accent, in descending strength (tbody-scoped) */
+tbody tr:nth-child(1) .rank-badge { background: var(--brand); color: #fff; }
+tbody tr:nth-child(2) .rank-badge { background: var(--brand-wash); color: var(--brand-ink); }
+tbody tr:nth-child(3) .rank-badge { background: var(--brand-wash-2); color: var(--brand-ink); }
 
 .outlet-cell { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .outlet-name { font-weight: 600; }
@@ -593,16 +596,20 @@ tr:nth-child(3) .rank-badge { background: var(--brand-wash-2); color: var(--bran
 /* ============================================================
    Small multiples
    ============================================================ */
+/* Discrete bordered cards rather than a 1px-gap hairline grid: an incomplete
+   last row would otherwise expose the grid's background as a filled block. */
 .trend-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
-  gap: 1px;
-  background: var(--hairline);
+  grid-template-columns: repeat(auto-fill, minmax(228px, 1fr));
+  gap: 12px;
+  padding: clamp(14px, 1.8vw, 18px);
 }
 
 .trend-card {
   background: var(--surface);
-  padding: 14px 14px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  padding: 13px 13px 7px;
   min-width: 0;
 }
 
@@ -699,7 +706,7 @@ tr:nth-child(3) .rank-badge { background: var(--brand-wash-2); color: var(--bran
 /* ============================================================
    Responsive — phone is a primary surface here
    ============================================================ */
-@media (max-width: 860px) {
+@media (max-width: 900px) {
   .stats { grid-template-columns: repeat(2, 1fr); }
   .stat--hero { grid-column: span 2; }
 }
@@ -722,8 +729,23 @@ tr:nth-child(3) .rank-badge { background: var(--brand-wash-2); color: var(--bran
 
   .data-table th, .data-table td { padding: 10px 12px; }
 
-  .trend-grid { grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); }
+  .trend-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 9px;
+    padding: 12px;
+  }
   .spark-frame { height: 64px; }
+
+  /* At two columns the name and figure can't share a row without the name
+     truncating to "Alun Al…" — stack them so the name keeps full width. */
+  .trend-card-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    margin-bottom: 1px;
+  }
+  .trend-card .trend-total { font-size: 13px; }
+  .trend-card .trend-meta { font-size: 10.5px; }
 }
 
 /* ============================================================

@@ -356,7 +356,7 @@ function buildRankedRows(tbody, rows, maxValue, totalValue) {
         formatRupiahCompact(row.value)}</td>` +
       `<td class="col-share"><div class="share-cell">` +
         `<div class="bar"><div class="bar-fill" style="width:${pctOfMax.toFixed(1)}%;animation-delay:${
-          Math.min(i * 40, 400)}ms"></div></div>` +
+          Math.min(i * 22, 200)}ms"></div></div>` +
         `<span class="share-pct">${pctOfTotal.toFixed(1).replace('.', ',')}%</span>` +
       `</div></td>`;
     tbody.appendChild(tr);
