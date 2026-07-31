@@ -2,44 +2,143 @@
 <html lang="id">
 <head>
   <meta charset="utf-8" />
-  <title>Dashboard Keuangan</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#C8102E" />
+  <title>Dashboard Keuangan — Momoyo &amp; Mixue</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
   <header class="topbar">
-    <h1>Dashboard Keuangan</h1>
-    <div class="topbar-controls">
-      <label for="month-select">Bulan</label>
-      <select id="month-select"></select>
-      <button id="logout-btn">Keluar</button>
+    <div class="topbar-inner">
+      <div class="brandmark">
+        <span class="brandmark-dot" aria-hidden="true"></span>
+        <span class="brandmark-text">
+          <strong>Dashboard Keuangan</strong>
+          <span>Momoyo &amp; Mixue</span>
+        </span>
+      </div>
+
+      <div class="topbar-controls">
+        <div class="field">
+          <label for="month-select">Periode</label>
+          <div class="select-wrap">
+            <select id="month-select"></select>
+          </div>
+        </div>
+        <button id="logout-btn" class="btn-ghost" type="button">Keluar</button>
+      </div>
     </div>
   </header>
 
-  <main>
-    <section id="summary">
-      <h2>Ringkasan Bulanan</h2>
-      <p id="grand-total" class="grand-total"></p>
-      <table id="summary-table">
-        <thead><tr><th>#</th><th>Outlet</th><th>Total Omzet</th></tr></thead>
-        <tbody></tbody>
-      </table>
+  <main id="main" data-state="loading">
+    <!-- ============ Kartu ringkasan ============ -->
+    <section class="stats" aria-label="Ringkasan bulan berjalan">
+      <article class="stat stat--hero">
+        <h2 class="stat-label">Total Omzet</h2>
+        <p class="stat-value" id="stat-total">&nbsp;</p>
+        <p class="stat-sub" id="stat-total-sub">&nbsp;</p>
+      </article>
+
+      <article class="stat">
+        <h2 class="stat-label">Rata-rata Harian</h2>
+        <p class="stat-value" id="stat-avg">&nbsp;</p>
+        <p class="stat-sub" id="stat-avg-sub">&nbsp;</p>
+      </article>
+
+      <article class="stat">
+        <h2 class="stat-label">Outlet Terbaik</h2>
+        <p class="stat-value stat-value--name" id="stat-best">&nbsp;</p>
+        <p class="stat-sub" id="stat-best-sub">&nbsp;</p>
+      </article>
+
+      <article class="stat">
+        <h2 class="stat-label">vs Bulan Lalu</h2>
+        <p class="stat-value" id="stat-mom">&nbsp;</p>
+        <p class="stat-sub" id="stat-mom-sub">&nbsp;</p>
+      </article>
     </section>
 
-    <section id="ranking">
-      <h2>Ranking Harian</h2>
-      <label for="ranking-date">Tanggal</label>
-      <input type="date" id="ranking-date" />
-      <table id="ranking-table">
-        <thead><tr><th>Peringkat</th><th>Outlet</th><th>Omzet</th></tr></thead>
-        <tbody></tbody>
-      </table>
+    <!-- ============ Tren total ============ -->
+    <section class="panel" aria-label="Tren omzet harian gabungan">
+      <div class="panel-head">
+        <div>
+          <h2 class="panel-title">Tren Omzet Harian</h2>
+          <p class="panel-note" id="trend-total-note">Gabungan semua outlet</p>
+        </div>
+      </div>
+      <div class="chart-frame chart-frame--tall">
+        <canvas id="chart-total" aria-label="Grafik garis omzet harian gabungan semua outlet"></canvas>
+      </div>
     </section>
 
-    <section id="trend">
-      <h2>Tren per Outlet</h2>
+    <!-- ============ Ringkasan per outlet ============ -->
+    <section class="panel" aria-label="Ringkasan omzet per outlet">
+      <div class="panel-head">
+        <div>
+          <h2 class="panel-title">Peringkat Bulanan</h2>
+          <p class="panel-note">Total omzet per outlet, tertinggi ke terendah</p>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table id="summary-table" class="data-table">
+          <thead>
+            <tr>
+              <th scope="col" class="col-rank">#</th>
+              <th scope="col">Outlet</th>
+              <th scope="col" class="col-num">Total Omzet</th>
+              <th scope="col" class="col-share">Porsi</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ Ranking harian ============ -->
+    <section class="panel" aria-label="Ranking omzet harian">
+      <div class="panel-head">
+        <div>
+          <h2 class="panel-title">Ranking Harian</h2>
+          <p class="panel-note" id="ranking-note">Pilih tanggal untuk melihat peringkat hari itu</p>
+        </div>
+        <div class="field">
+          <label for="ranking-date">Tanggal</label>
+          <input type="date" id="ranking-date" />
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table id="ranking-table" class="data-table">
+          <thead>
+            <tr>
+              <th scope="col" class="col-rank">#</th>
+              <th scope="col">Outlet</th>
+              <th scope="col" class="col-num">Omzet</th>
+              <th scope="col" class="col-share">Porsi</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ Small multiples ============ -->
+    <section class="panel" aria-label="Tren per outlet">
+      <div class="panel-head">
+        <div>
+          <h2 class="panel-title">Tren per Outlet</h2>
+          <p class="panel-note">Pola omzet harian tiap outlet sepanjang bulan</p>
+        </div>
+      </div>
       <div id="trend-grid" class="trend-grid"></div>
     </section>
+
+    <p class="footnote" id="footnote"></p>
   </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <script type="module" src="js/dashboard.js"></script>

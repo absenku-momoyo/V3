@@ -21,7 +21,9 @@ export async function fetchDailyReportsForMonth(year, month) {
     .gte('report_date', firstDay)
     .lte('report_date', lastDay);
   if (error) throw error;
-  return data;
+  // Coerce omzet defensively: Postgres `numeric` can serialize as a string,
+  // and a string would silently turn every downstream sum into concatenation.
+  return data.map((r) => ({ ...r, omzet: Number(r.omzet) || 0 }));
 }
 
 export async function fetchRankingForDate(dateStr) {
@@ -31,5 +33,5 @@ export async function fetchRankingForDate(dateStr) {
     .eq('report_date', dateStr)
     .order('peringkat', { ascending: true });
   if (error) throw error;
-  return data;
+  return data.map((r) => ({ ...r, omzet: Number(r.omzet) || 0 }));
 }

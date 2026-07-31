@@ -2,17 +2,26 @@
 <html lang="id">
 <head>
   <meta charset="utf-8" />
-  <title>Login — Dashboard Keuangan</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#C8102E" />
+  <title>Masuk — Dashboard Keuangan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body class="login-page">
   <form id="login-form" class="login-card">
     <h1>Dashboard Keuangan</h1>
+    <p class="login-sub">Momoyo &amp; Mixue — akses pemilik</p>
+
     <label for="password">Password</label>
-    <input type="password" id="password" required autocomplete="current-password" />
-    <button type="submit">Masuk</button>
+    <input type="password" id="password" required autocomplete="current-password" autofocus />
+
+    <button type="submit" class="btn-primary" id="submit-btn">Masuk</button>
     <p id="login-error" class="error" hidden></p>
   </form>
+
   <script type="module">
     import { login } from './js/auth.js';
 
@@ -20,15 +29,24 @@
 
     const form = document.getElementById('login-form');
     const errorEl = document.getElementById('login-error');
+    const submitBtn = document.getElementById('submit-btn');
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       errorEl.hidden = true;
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Memeriksa…';
+
       const password = document.getElementById('password').value;
       const { error } = await login(OWNER_EMAIL, password);
+
       if (error) {
-        errorEl.textContent = error.message;
+        errorEl.textContent = error.message === 'Invalid login credentials'
+          ? 'Password salah. Coba lagi.'
+          : error.message;
         errorEl.hidden = false;
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Masuk';
         return;
       }
       window.location.href = 'index.html';
