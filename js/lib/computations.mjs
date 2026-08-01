@@ -1,3 +1,39 @@
+const MONTHS_ID = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+// Render a Supabase timestamptz (UTC) as "31 Juli 2026, 16:50 WIB".
+// WIB is a fixed UTC+7 offset (no DST), so we shift the epoch by +7h and read
+// the UTC fields — deterministic regardless of the viewer's local timezone.
+export function formatUpdatedAtWIB(iso) {
+  if (!iso) return null;
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return null;
+  const wib = new Date(t.getTime() + 7 * 3600 * 1000);
+  const d = wib.getUTCDate();
+  const month = MONTHS_ID[wib.getUTCMonth()];
+  const y = wib.getUTCFullYear();
+  const hh = String(wib.getUTCHours()).padStart(2, '0');
+  const mm = String(wib.getUTCMinutes()).padStart(2, '0');
+  return `${d} ${month} ${y}, ${hh}:${mm} WIB`;
+}
+
+// Aggregate the tunai/online breakdown across a month's rows for the donut.
+// Rows not yet backfilled carry null in both columns and are simply skipped;
+// hasSplit is false only when NO row has the breakdown, so the UI can show a
+// "belum ada rincian" state instead of an empty 0/0 donut.
+export function computeCashOnlineSplit(dailyRows) {
+  let tunai = 0;
+  let online = 0;
+  let hasSplit = false;
+  dailyRows.forEach((r) => {
+    if (r.omzet_tunai == null && r.omzet_online == null) return;
+    hasSplit = true;
+    tunai += Number(r.omzet_tunai) || 0;
+    online += Number(r.omzet_online) || 0;
+  });
+  return { tunai, online, total: tunai + online, hasSplit };
+}
+
 export function computeMonthlySummary(dailyRows, outlets) {
   const totals = new Map();
   outlets.forEach((o) => totals.set(o.id, 0));

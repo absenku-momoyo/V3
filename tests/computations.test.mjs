@@ -8,6 +8,8 @@ import {
   formatRupiahFull,
   computeHeadlineStats,
   computeMoMComparison,
+  formatUpdatedAtWIB,
+  computeCashOnlineSplit,
 } from '../js/lib/computations.mjs';
 
 test('computeMonthlySummary sums per outlet and sorts descending', () => {
@@ -145,4 +147,71 @@ test('computeMoMComparison returns null percent when current month is empty', ()
   assert.equal(mom.currentTotal, 0);
   assert.equal(mom.throughDay, 0);
   assert.equal(mom.percent, null);
+});
+
+// ---------- Last-updated timestamp (WIB) ----------
+
+test('formatUpdatedAtWIB converts a UTC timestamp to WIB (UTC+7) with Indonesian month', () => {
+  // 09:50 UTC -> 16:50 WIB, same day
+  assert.equal(formatUpdatedAtWIB('2026-07-31T09:50:15+00:00'), '31 Juli 2026, 16:50 WIB');
+});
+
+test('formatUpdatedAtWIB rolls the date forward when +7 crosses midnight', () => {
+  // 23:30 UTC on Jul 31 -> 06:30 WIB on Aug 1
+  assert.equal(formatUpdatedAtWIB('2026-07-31T23:30:00+00:00'), '1 Agustus 2026, 06:30 WIB');
+});
+
+test('formatUpdatedAtWIB matches the 07:30 morning-push example', () => {
+  // 00:30 UTC -> 07:30 WIB
+  assert.equal(formatUpdatedAtWIB('2026-08-01T00:30:00+00:00'), '1 Agustus 2026, 07:30 WIB');
+});
+
+test('formatUpdatedAtWIB returns null on empty or invalid input', () => {
+  assert.equal(formatUpdatedAtWIB(null), null);
+  assert.equal(formatUpdatedAtWIB(''), null);
+  assert.equal(formatUpdatedAtWIB('not-a-date'), null);
+});
+
+// ---------- Cash vs Online split (donut) ----------
+
+test('computeCashOnlineSplit sums the tunai/online columns when present', () => {
+  const rows = [
+    { omzet: 300, omzet_tunai: 100, omzet_online: 200 },
+    { omzet: 150, omzet_tunai: 50, omzet_online: 100 },
+  ];
+  const s = computeCashOnlineSplit(rows);
+  assert.equal(s.tunai, 150);
+  assert.equal(s.online, 300);
+  assert.equal(s.total, 450);
+  assert.equal(s.hasSplit, true);
+});
+
+test('computeCashOnlineSplit reports hasSplit=false when no row carries a split', () => {
+  const rows = [
+    { omzet: 300, omzet_tunai: null, omzet_online: null },
+    { omzet: 150, omzet_tunai: null, omzet_online: null },
+  ];
+  const s = computeCashOnlineSplit(rows);
+  assert.equal(s.tunai, 0);
+  assert.equal(s.online, 0);
+  assert.equal(s.total, 0);
+  assert.equal(s.hasSplit, false);
+});
+
+test('computeCashOnlineSplit ignores null split cells but still sums the populated ones', () => {
+  const rows = [
+    { omzet: 300, omzet_tunai: 100, omzet_online: 200 },
+    { omzet: 150, omzet_tunai: null, omzet_online: null }, // not yet backfilled
+  ];
+  const s = computeCashOnlineSplit(rows);
+  assert.equal(s.tunai, 100);
+  assert.equal(s.online, 200);
+  assert.equal(s.hasSplit, true);
+});
+
+test('computeCashOnlineSplit coerces string numerics (Postgres numeric can serialize as text)', () => {
+  const rows = [{ omzet: 300, omzet_tunai: '100.50', omzet_online: '199.50' }];
+  const s = computeCashOnlineSplit(rows);
+  assert.equal(s.tunai, 100.5);
+  assert.equal(s.online, 199.5);
 });

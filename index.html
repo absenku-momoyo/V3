@@ -35,6 +35,12 @@
   </header>
 
   <main id="main" data-state="loading">
+    <!-- ============ Freshness ============ -->
+    <p class="freshness" id="freshness">
+      <span class="freshness-dot" aria-hidden="true"></span>
+      <span id="freshness-text">Memuat data…</span>
+    </p>
+
     <!-- ============ Kartu ringkasan ============ -->
     <section class="stats" aria-label="Ringkasan bulan berjalan">
       <article class="stat stat--hero">
@@ -62,52 +68,53 @@
       </article>
     </section>
 
-    <!-- ============ Tren total ============ -->
-    <section class="panel" aria-label="Tren omzet harian gabungan">
-      <div class="panel-head">
-        <div>
-          <h2 class="panel-title">Tren Omzet Harian</h2>
-          <p class="panel-note" id="trend-total-note">Gabungan semua outlet</p>
+    <!-- ============ Tren total + Donut komposisi (row) ============ -->
+    <div class="split-row">
+      <section class="panel panel--grow" aria-label="Tren omzet harian gabungan">
+        <div class="panel-head">
+          <div>
+            <h2 class="panel-title">Tren Omzet Harian</h2>
+            <p class="panel-note" id="trend-total-note">Gabungan semua outlet</p>
+          </div>
         </div>
-      </div>
-      <div class="chart-frame chart-frame--tall">
-        <canvas id="chart-total" aria-label="Grafik garis omzet harian gabungan semua outlet"></canvas>
-      </div>
-    </section>
+        <div class="chart-frame chart-frame--tall">
+          <canvas id="chart-total" aria-label="Grafik garis omzet harian gabungan semua outlet"></canvas>
+        </div>
+      </section>
 
-    <!-- ============ Ringkasan per outlet ============ -->
-    <section class="panel" aria-label="Ringkasan omzet per outlet">
-      <div class="panel-head">
-        <div>
-          <h2 class="panel-title">Peringkat Bulanan</h2>
-          <p class="panel-note">Total omzet per outlet, tertinggi ke terendah</p>
+      <section class="panel panel--donut" aria-label="Komposisi pembayaran tunai vs online">
+        <div class="panel-head">
+          <div>
+            <h2 class="panel-title">Tunai vs Online</h2>
+            <p class="panel-note" id="donut-note">Komposisi pembayaran</p>
+          </div>
         </div>
-      </div>
-      <div class="table-scroll">
-        <table id="summary-table" class="data-table">
-          <thead>
-            <tr>
-              <th scope="col" class="col-rank">#</th>
-              <th scope="col">Outlet</th>
-              <th scope="col" class="col-num">Total Omzet</th>
-              <th scope="col" class="col-share">Porsi</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </section>
+        <div class="donut-wrap">
+          <div class="donut-frame">
+            <canvas id="chart-donut" aria-label="Diagram donat proporsi pembayaran tunai vs online"></canvas>
+            <div class="donut-center" id="donut-center"></div>
+          </div>
+          <ul class="donut-legend" id="donut-legend"></ul>
+        </div>
+      </section>
+    </div>
 
-    <!-- ============ Ranking harian ============ -->
-    <section class="panel" aria-label="Ranking omzet harian">
+    <!-- ============ Peringkat (toggle Harian/Bulanan) ============ -->
+    <section class="panel" id="ranking-panel" data-mode="harian" aria-label="Peringkat omzet outlet">
       <div class="panel-head">
         <div>
-          <h2 class="panel-title">Ranking Harian</h2>
-          <p class="panel-note" id="ranking-note">Pilih tanggal untuk melihat peringkat hari itu</p>
+          <h2 class="panel-title">Peringkat</h2>
+          <p class="panel-note" id="ranking-note">&nbsp;</p>
         </div>
-        <div class="field">
-          <label for="ranking-date">Tanggal</label>
-          <input type="date" id="ranking-date" />
+        <div class="panel-head-controls">
+          <div class="segmented" role="tablist" aria-label="Mode peringkat">
+            <button class="seg-btn is-active" id="seg-harian" type="button" role="tab" aria-selected="true">Harian</button>
+            <button class="seg-btn" id="seg-bulanan" type="button" role="tab" aria-selected="false">Bulanan</button>
+          </div>
+          <div class="field" id="ranking-date-field">
+            <label for="ranking-date">Tanggal</label>
+            <input type="date" id="ranking-date" />
+          </div>
         </div>
       </div>
       <div class="table-scroll">
@@ -116,7 +123,7 @@
             <tr>
               <th scope="col" class="col-rank">#</th>
               <th scope="col">Outlet</th>
-              <th scope="col" class="col-num">Omzet</th>
+              <th scope="col" class="col-num" id="ranking-value-head">Omzet</th>
               <th scope="col" class="col-share">Porsi</th>
             </tr>
           </thead>
@@ -125,12 +132,12 @@
       </div>
     </section>
 
-    <!-- ============ Small multiples ============ -->
+    <!-- ============ Small multiples (clickable) ============ -->
     <section class="panel" aria-label="Tren per outlet">
       <div class="panel-head">
         <div>
           <h2 class="panel-title">Tren per Outlet</h2>
-          <p class="panel-note">Pola omzet harian tiap outlet sepanjang bulan</p>
+          <p class="panel-note">Klik satu outlet untuk lihat detail besar</p>
         </div>
       </div>
       <div id="trend-grid" class="trend-grid"></div>
@@ -138,6 +145,24 @@
 
     <p class="footnote" id="footnote"></p>
   </main>
+
+  <!-- ============ Modal detail outlet ============ -->
+  <div class="modal" id="outlet-modal" hidden>
+    <div class="modal-backdrop" data-close="1"></div>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-head">
+        <div>
+          <h2 class="modal-title" id="modal-title">&nbsp;</h2>
+          <p class="modal-sub" id="modal-sub">&nbsp;</p>
+        </div>
+        <button class="modal-close" id="modal-close" type="button" aria-label="Tutup detail">&times;</button>
+      </div>
+      <div class="modal-chart-frame">
+        <canvas id="modal-chart" aria-label="Grafik detail omzet harian outlet terpilih"></canvas>
+      </div>
+      <div class="modal-stats" id="modal-stats"></div>
+    </div>
+  </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 

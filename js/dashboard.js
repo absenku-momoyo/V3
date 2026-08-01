@@ -1,19 +1,22 @@
 // Dashboard rendering: headline stats, aggregate trend, ranked tables,
 // and per-outlet small multiples.
 import { requireSession, logout } from './auth.js';
-import { fetchOutlets, fetchDailyReportsForMonth, fetchRankingForDate } from './data.js';
+import { fetchOutlets, fetchDailyReportsForMonth, fetchRankingForDate, fetchLastUpdated } from './data.js';
 import {
   computeMonthlySummary,
   pickDefaultRankingDate,
   buildTrendSeries,
   computeHeadlineStats,
   computeMoMComparison,
+  computeCashOnlineSplit,
   formatRupiahCompact,
   formatRupiahFull,
+  formatUpdatedAtWIB,
 } from './lib/computations.mjs';
 
 const monthSelect = document.getElementById('month-select');
 const rankingDateInput = document.getElementById('ranking-date');
+const rankingPanel = document.getElementById('ranking-panel');
 const logoutBtn = document.getElementById('logout-btn');
 const mainEl = document.getElementById('main');
 const toastEl = document.getElementById('toast');
@@ -22,6 +25,13 @@ let outlets = [];
 let currentYear;
 let currentMonth;
 const charts = new Map();
+
+// Kept between loads so the ranking toggle and the outlet modal can re-render
+// without re-fetching.
+let currentDailyRows = [];
+let rankingMode = 'harian';          // 'harian' | 'bulanan'
+let lastDefaultDate = null;          // latest date with data in the loaded month
+const seriesByOutlet = new Map();    // outlet_id -> trend series (for the modal)
 
 // ---------- theme-aware chart ink ----------
 // Chart.js needs concrete colors, so read them from the CSS custom properties
@@ -93,8 +103,7 @@ function setLoading(isLoading) {
     document.getElementById(id).innerHTML = '<span class="skeleton skeleton--sub"></span>';
   });
 
-  skeletonRows('#summary-table tbody', 6, 4);
-  skeletonRows('#ranking-table tbody', 5, 4);
+  skeletonRows('#ranking-table tbody', 6, 4);
 
   const grid = document.getElementById('trend-grid');
   grid.innerHTML = '';
@@ -363,13 +372,40 @@ function buildRankedRows(tbody, rows, maxValue, totalValue) {
   });
 }
 
-function renderSummary(dailyRows) {
-  const { rows, grandTotal } = computeMonthlySummary(dailyRows, outlets);
-  const tbody = document.querySelector('#summary-table tbody');
+// One panel, two modes. The toggle swaps between a monthly leaderboard
+// (summed from the already-loaded rows) and a single-day ranking (fetched
+// from the ranking view). Column header + note adapt to the mode.
+function applyRankingMode() {
+  rankingPanel.dataset.mode = rankingMode;
+  document.getElementById('seg-harian').classList.toggle('is-active', rankingMode === 'harian');
+  document.getElementById('seg-bulanan').classList.toggle('is-active', rankingMode === 'bulanan');
+  document.getElementById('seg-harian').setAttribute('aria-selected', String(rankingMode === 'harian'));
+  document.getElementById('seg-bulanan').setAttribute('aria-selected', String(rankingMode === 'bulanan'));
+
+  if (rankingMode === 'bulanan') {
+    renderRankingBulanan();
+  } else if (rankingDateInput.value) {
+    renderRankingHarian(rankingDateInput.value);
+  } else {
+    const note = document.getElementById('ranking-note');
+    note.textContent = 'Belum ada data pada periode ini';
+    emptyRow(document.querySelector('#ranking-table tbody'), 4,
+      'Belum ada data omzet untuk periode ini.');
+  }
+}
+
+function renderRankingBulanan() {
+  const { rows, grandTotal } = computeMonthlySummary(currentDailyRows, outlets);
+  const tbody = document.querySelector('#ranking-table tbody');
+  document.getElementById('ranking-value-head').textContent = 'Total Omzet';
+  const note = document.getElementById('ranking-note');
+  const monthLabel = `${MONTH_NAMES[currentMonth - 1]} ${currentYear}`;
   if (!rows.length || grandTotal === 0) {
+    note.textContent = `Total per outlet · ${monthLabel}`;
     emptyRow(tbody, 4, 'Belum ada data omzet untuk periode ini.');
     return;
   }
+  note.textContent = `Total per outlet · ${monthLabel}`;
   const max = rows[0].total;
   buildRankedRows(tbody, rows.map((r) => ({
     name: r.outlet_name,
@@ -377,11 +413,14 @@ function renderSummary(dailyRows) {
   })), max, grandTotal);
 }
 
-async function renderRanking(dateStr) {
+async function renderRankingHarian(dateStr) {
   const tbody = document.querySelector('#ranking-table tbody');
   const note = document.getElementById('ranking-note');
+  document.getElementById('ranking-value-head').textContent = 'Omzet';
   try {
     const ranking = await fetchRankingForDate(dateStr);
+    // Guard against a stale response if the user toggled/changed date meanwhile.
+    if (rankingMode !== 'harian') return;
     if (!ranking.length) {
       note.textContent = `Tidak ada data untuk ${fmtDateLong(dateStr)}`;
       emptyRow(tbody, 4, 'Tidak ada outlet yang melaporkan omzet pada tanggal ini.');
@@ -411,9 +450,10 @@ function renderTrendGrid(dailyRows) {
 
   // destroy only the sparkline charts, keep the aggregate one
   Array.from(charts.keys())
-    .filter((k) => k !== 'total')
+    .filter((k) => k !== 'total' && k !== 'donut' && k !== 'modal')
     .forEach(destroyChart);
   grid.innerHTML = '';
+  seriesByOutlet.clear();
 
   // Order the small multiples by monthly total so the grid reads top-down,
   // matching the ranking table rather than an arbitrary alphabetical order.
@@ -424,8 +464,21 @@ function renderTrendGrid(dailyRows) {
   })).sort((a, b) => b.total - a.total);
 
   withTotals.forEach((s) => {
+    seriesByOutlet.set(s.outlet_id, s);
     const card = document.createElement('div');
     card.className = 'trend-card' + (s.daysWithData === 0 ? ' trend-card--empty' : '');
+
+    // Cards with data are clickable → open the detail modal (Feature: drill-down)
+    if (s.daysWithData > 0) {
+      card.classList.add('trend-card--clickable');
+      card.tabIndex = 0;
+      card.setAttribute('role', 'button');
+      card.setAttribute('aria-label', `Lihat detail ${s.outlet_name}`);
+      card.addEventListener('click', () => openOutletModal(s.outlet_id));
+      card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openOutletModal(s.outlet_id); }
+      });
+    }
 
     const head = document.createElement('div');
     head.className = 'trend-card-head';
@@ -494,6 +547,192 @@ function renderTrendGrid(dailyRows) {
   });
 }
 
+// ---------- donut: tunai vs online ----------
+// Tunai keeps the brand crimson; online is a muted slate. Two categories only,
+// each direct-labelled with % and nominal, so identity never rests on color.
+function renderDonut(dailyRows) {
+  const c = ink();
+  const split = computeCashOnlineSplit(dailyRows);
+  const note = document.getElementById('donut-note');
+  const legend = document.getElementById('donut-legend');
+  const center = document.getElementById('donut-center');
+  const canvas = document.getElementById('chart-donut');
+
+  destroyChart('donut');
+
+  if (!split.hasSplit || split.total === 0) {
+    note.textContent = 'Rincian belum tersedia';
+    center.innerHTML = '';
+    canvas.style.display = 'none';
+    legend.innerHTML =
+      '<li class="donut-empty">Rincian tunai/online belum ada untuk periode ini. ' +
+      'Jalankan pusher versi terbaru untuk mengisinya.</li>';
+    return;
+  }
+
+  canvas.style.display = '';
+  const onlineColor = cssVar('--ink-2');
+  const tunaiColor = c.brand;
+  const pct = (v) => (v / split.total) * 100;
+
+  note.textContent = 'Komposisi pembayaran';
+  center.innerHTML =
+    '<span class="donut-center-label">Tunai</span>' +
+    `<span class="donut-center-value">${pct(split.tunai).toFixed(0)}%</span>`;
+
+  legend.innerHTML =
+    `<li><span class="legend-swatch" style="background:${tunaiColor}"></span>` +
+      `<span class="legend-name">Tunai (CASH)</span>` +
+      `<span class="legend-value">${formatRupiahCompact(split.tunai)}<small>${
+        pct(split.tunai).toFixed(1).replace('.', ',')}%</small></span></li>` +
+    `<li><span class="legend-swatch" style="background:${onlineColor}"></span>` +
+      `<span class="legend-name">Online (BCA, GRAB, GoFood, dll)</span>` +
+      `<span class="legend-value">${formatRupiahCompact(split.online)}<small>${
+        pct(split.online).toFixed(1).replace('.', ',')}%</small></span></li>`;
+
+  const chart = new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels: ['Tunai', 'Online'],
+      datasets: [{
+        data: [split.tunai, split.online],
+        backgroundColor: [tunaiColor, onlineColor],
+        borderColor: c.surface,
+        borderWidth: 3,
+        hoverOffset: 4,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '68%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: c.ink,
+          titleColor: c.surface,
+          bodyColor: c.surface,
+          padding: 11,
+          cornerRadius: 8,
+          displayColors: false,
+          titleFont: { family: fontUI(), size: 12, weight: '700' },
+          bodyFont: { family: fontUI(), size: 13 },
+          callbacks: {
+            label: (item) => `${formatRupiahFull(item.parsed)} · ${
+              pct(item.parsed).toFixed(1).replace('.', ',')}%`,
+          },
+        },
+      },
+    },
+  });
+  charts.set('donut', chart);
+}
+
+// ---------- freshness ----------
+async function renderFreshness() {
+  const el = document.getElementById('freshness-text');
+  const wrap = document.getElementById('freshness');
+  try {
+    const iso = await fetchLastUpdated();
+    const formatted = formatUpdatedAtWIB(iso);
+    if (!formatted) {
+      wrap.classList.add('freshness--stale');
+      el.textContent = 'Belum ada data tersimpan';
+      return;
+    }
+    wrap.classList.remove('freshness--stale');
+    el.innerHTML = `Data per <strong>${escapeHtml(formatted)}</strong> · diperbarui 2× sehari (23:00 &amp; 07:30)`;
+  } catch (err) {
+    wrap.classList.add('freshness--stale');
+    el.textContent = 'Gagal memuat waktu pembaruan';
+  }
+}
+
+// ---------- outlet detail modal ----------
+const modal = document.getElementById('outlet-modal');
+
+function openOutletModal(outletId) {
+  const s = seriesByOutlet.get(outletId);
+  if (!s) return;
+  const c = ink();
+
+  document.getElementById('modal-title').textContent = s.outlet_name;
+  const monthLabel = `${MONTH_NAMES[currentMonth - 1]} ${currentYear}`;
+  document.getElementById('modal-sub').textContent =
+    `Omzet harian · ${monthLabel}`;
+
+  const values = s.points.map((p) => p.omzet).filter((v) => v !== null);
+  const total = values.reduce((sum, v) => sum + v, 0);
+  const peak = values.length ? Math.max(...values) : 0;
+  const avg = values.length ? total / values.length : 0;
+  document.getElementById('modal-stats').innerHTML =
+    statTile('Total', formatRupiahCompact(total)) +
+    statTile('Rata-rata / hari', formatRupiahCompact(avg)) +
+    statTile('Puncak', formatRupiahCompact(peak));
+
+  modal.hidden = false;
+  document.body.style.overflow = 'hidden';
+
+  destroyChart('modal');
+  const canvas = document.getElementById('modal-chart');
+  const chart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: s.points.map((p) => Number(p.date.slice(8, 10))),
+      datasets: [{
+        data: s.points.map((p) => p.omzet),
+        borderColor: c.brand,
+        borderWidth: 2.5,
+        spanGaps: false,
+        tension: 0.32,
+        pointRadius: 0,
+        pointHoverRadius: 5,
+        pointHoverBackgroundColor: c.brand,
+        pointHoverBorderColor: c.surface,
+        pointHoverBorderWidth: 2,
+        fill: true,
+        backgroundColor: (ctx) => areaGradient(ctx.chart.ctx, ctx.chart.chartArea, c.brand),
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false }, tooltip: tooltipConfig(c, s.points) },
+      scales: {
+        y: {
+          beginAtZero: true,
+          border: { display: false },
+          grid: { color: c.grid, drawTicks: false },
+          ticks: { color: c.muted, font: { family: fontUI(), size: 11 }, padding: 8,
+            maxTicksLimit: 5, callback: (v) => formatRupiahCompact(v) },
+        },
+        x: {
+          border: { color: c.hairline },
+          grid: { display: false },
+          ticks: { color: c.muted, font: { family: fontUI(), size: 11 },
+            autoSkip: true, maxTicksLimit: 12, maxRotation: 0 },
+        },
+      },
+    },
+    plugins: [crosshairPlugin],
+  });
+  chart.$crosshairColor = hexToRgba(c.brand, 0.35);
+  charts.set('modal', chart);
+  document.getElementById('modal-close').focus();
+}
+
+function statTile(label, value) {
+  return `<div class="modal-stat"><div class="ms-label">${escapeHtml(label)}</div>` +
+    `<div class="ms-value">${escapeHtml(value)}</div></div>`;
+}
+
+function closeOutletModal() {
+  modal.hidden = true;
+  document.body.style.overflow = '';
+  destroyChart('modal');
+}
+
 // ---------- orchestration ----------
 async function loadMonth() {
   setLoading(true);
@@ -510,26 +749,21 @@ async function loadMonth() {
     ]);
 
     setLoading(false);
+    currentDailyRows = dailyRows;
 
     const stats = computeHeadlineStats(dailyRows, outlets);
     const mom = computeMoMComparison(dailyRows, prevRows);
     renderStats(stats, mom, monthLabel);
 
     renderTotalTrend(dailyRows);
-    renderSummary(dailyRows);
+    renderDonut(dailyRows);
     renderTrendGrid(dailyRows);
 
-    const defaultDate = pickDefaultRankingDate(dailyRows);
-    if (defaultDate) {
-      rankingDateInput.value = defaultDate;
-      await renderRanking(defaultDate);
-    } else {
-      rankingDateInput.value = '';
-      document.getElementById('ranking-note').textContent =
-        'Belum ada data pada periode ini';
-      emptyRow(document.querySelector('#ranking-table tbody'), 4,
-        'Belum ada data omzet untuk periode ini.');
-    }
+    // Default the daily ranking to the latest date that has data, then render
+    // whichever ranking mode is currently selected.
+    lastDefaultDate = pickDefaultRankingDate(dailyRows);
+    rankingDateInput.value = lastDefaultDate || '';
+    applyRankingMode();
 
     const outletsWithData = new Set(dailyRows.map((r) => r.outlet_id)).size;
     document.getElementById('footnote').textContent =
@@ -556,6 +790,7 @@ async function init() {
   }
 
   populateMonthSelect();
+  renderFreshness();          // global, not month-scoped — fetch once
   await loadMonth();
 
   monthSelect.addEventListener('change', async () => {
@@ -565,8 +800,31 @@ async function init() {
     await loadMonth();
   });
 
+  // Ranking mode toggle (Harian / Bulanan)
+  document.getElementById('seg-harian').addEventListener('click', () => {
+    if (rankingMode === 'harian') return;
+    rankingMode = 'harian';
+    applyRankingMode();
+  });
+  document.getElementById('seg-bulanan').addEventListener('click', () => {
+    if (rankingMode === 'bulanan') return;
+    rankingMode = 'bulanan';
+    applyRankingMode();
+  });
+
   rankingDateInput.addEventListener('change', () => {
-    if (rankingDateInput.value) renderRanking(rankingDateInput.value);
+    if (rankingMode === 'harian' && rankingDateInput.value) {
+      renderRankingHarian(rankingDateInput.value);
+    }
+  });
+
+  // Modal close: button, backdrop click, Escape
+  document.getElementById('modal-close').addEventListener('click', closeOutletModal);
+  modal.addEventListener('click', (e) => {
+    if (e.target.dataset.close) closeOutletModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !modal.hidden) closeOutletModal();
   });
 
   logoutBtn.addEventListener('click', logout);
@@ -575,6 +833,7 @@ async function init() {
   if (window.matchMedia) {
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       destroyAllCharts();
+      renderFreshness();
       loadMonth();
     });
   }
