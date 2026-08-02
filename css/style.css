@@ -40,6 +40,8 @@
 
   --font-display: "Fraunces", Georgia, "Times New Roman", serif;
   --font-ui: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* rounded/bold — login title only, echoes the crew attendance app's brand voice */
+  --font-playful: "Fredoka", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
 
   --maxw: 1240px;
 }
@@ -107,23 +109,65 @@ body {
 h1, h2, h3 { margin: 0; font-weight: 600; }
 
 /* ============================================================
-   Login
+   Login — Momoyo brand: red gradient, mascot + sticker, but calmer
+   than the crew attendance app (owner-only access: one mascot, one
+   sticker, generous negative space — no scattered doodles).
    ============================================================ */
 .login-page {
   min-height: 100dvh;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: 32px 20px;
+  position: relative;
+  overflow: hidden;
+  /* dark red -> maroon, deeper/more subdued than a playful crew-app red */
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(255, 90, 110, 0.16), transparent 60%),
+    linear-gradient(160deg, #7A101F 0%, #4A0B16 55%, #2B060D 100%);
+}
+
+/* one very soft glow behind the mascot for depth — intentionally the
+   only decorative flourish, per "tidak terlalu ramai" */
+.login-page::before {
+  content: "";
+  position: absolute;
+  top: -10%;
+  left: 50%;
+  width: 640px;
+  height: 640px;
+  transform: translateX(-50%);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.07), transparent 65%);
+  pointer-events: none;
+}
+
+.login-scene {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 372px;
+}
+
+/* Mascot -> card, in normal flow. Purely decorative — sits above the card,
+   never overlapping it. */
+.login-mascot {
+  width: clamp(140px, 28vw, 184px);
+  height: auto;
+  margin-bottom: clamp(20px, 4vw, 34px);
+  filter: drop-shadow(0 14px 22px rgba(0, 0, 0, 0.35));
 }
 
 .login-card {
-  width: min(100%, 372px);
+  width: 100%;
   background: var(--surface);
   border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-md);
-  padding: 34px 30px 30px;
+  border-radius: 22px;
+  box-shadow: 0 2px 4px rgba(22, 19, 15, 0.06), 0 20px 44px -16px rgba(30, 4, 8, 0.55);
+  padding: 40px 30px 30px;
   position: relative;
+  z-index: 1;
   overflow: hidden;
 }
 
@@ -137,10 +181,10 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 }
 
 .login-card h1 {
-  font-family: var(--font-display);
-  font-optical-sizing: auto;
-  font-size: 27px;
-  letter-spacing: -0.02em;
+  font-family: var(--font-playful);
+  font-weight: 600;
+  font-size: 26px;
+  letter-spacing: -0.01em;
   line-height: 1.15;
   margin-bottom: 4px;
 }
@@ -149,6 +193,11 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
   margin: 0 0 24px;
   color: var(--ink-muted);
   font-size: 13.5px;
+}
+
+@media (max-width: 480px) {
+  .login-mascot { width: clamp(118px, 30vw, 152px); margin-bottom: 20px; }
+  .login-card { padding: 34px 22px 26px; }
 }
 
 .login-card label {
