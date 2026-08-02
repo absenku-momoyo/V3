@@ -421,10 +421,11 @@ main > *:nth-child(5) { animation-delay: .26s; }
   line-height: 1.4;
 }
 
-.delta { font-weight: 700; }
+.delta { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .delta--up   { color: var(--good); }
 .delta--down { color: var(--bad); }
-.delta-icon { font-style: normal; margin-right: 2px; }
+.delta--flat { color: var(--ink-muted); font-weight: 600; }
+.delta-icon { font-style: normal; margin-right: 2px; font-size: 0.82em; }
 
 /* ============================================================
    Panels
@@ -512,7 +513,8 @@ main > *:nth-child(5) { animation-delay: .26s; }
 .data-table tbody tr:hover { background: var(--brand-wash-2); }
 
 .col-rank { width: 46px; }
-.col-share { width: 34%; min-width: 150px; }
+.col-delta { width: 92px; }
+.col-share { width: 26%; min-width: 130px; }
 
 /* element+class specificity, so these beat the generic `.data-table th` rule */
 .data-table th.col-rank,
@@ -524,6 +526,8 @@ main > *:nth-child(5) { animation-delay: .26s; }
   font-weight: 600;
   white-space: nowrap;
 }
+.data-table th.col-delta,
+.data-table td.col-delta { text-align: right; white-space: nowrap; }
 
 .rank-badge {
   display: inline-grid;

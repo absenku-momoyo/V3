@@ -8,6 +8,8 @@ import {
   buildTrendSeries,
   computeHeadlineStats,
   computeMoMComparison,
+  computePerOutletMoM,
+  computeDayOverSameDayLastMonth,
   computeCashOnlineSplit,
   formatRupiahCompact,
   formatRupiahFull,
@@ -29,9 +31,11 @@ const charts = new Map();
 // Kept between loads so the ranking toggle and the outlet modal can re-render
 // without re-fetching.
 let currentDailyRows = [];
+let prevMonthDailyRows = [];         // full previous calendar month's rows (for Harian day-vs-day)
 let rankingMode = 'harian';          // 'harian' | 'bulanan'
 let lastDefaultDate = null;          // latest date with data in the loaded month
 const seriesByOutlet = new Map();    // outlet_id -> trend series (for the modal)
+let outletMoM = new Map();           // outlet_id -> same-period MoM (ranking column)
 
 // ---------- theme-aware chart ink ----------
 // Chart.js needs concrete colors, so read them from the CSS custom properties
@@ -103,7 +107,7 @@ function setLoading(isLoading) {
     document.getElementById(id).innerHTML = '<span class="skeleton skeleton--sub"></span>';
   });
 
-  skeletonRows('#ranking-table tbody', 6, 4);
+  skeletonRows('#ranking-table tbody', 6, 5);
 
   const grid = document.getElementById('trend-grid');
   grid.innerHTML = '';
@@ -161,12 +165,7 @@ function renderStats(stats, mom, monthLabel) {
       ? 'Tidak ada data bulan lalu sebagai pembanding'
       : 'Belum ada data bulan ini');
   } else {
-    const up = mom.percent >= 0;
-    const cls = up ? 'delta--up' : 'delta--down';
-    const arrow = up ? '▲' : '▼';
-    set('stat-mom',
-      `<span class="delta ${cls}"><i class="delta-icon">${arrow}</i>${
-        Math.abs(mom.percent).toFixed(1).replace('.', ',')}%</span>`);
+    set('stat-mom', deltaHtml(mom.percent));
     // Say explicitly that the baseline was truncated to the same span —
     // otherwise a part-month vs full-month gap reads as a real collapse.
     set('stat-mom-sub',
@@ -348,6 +347,19 @@ function emptyRow(tbody, colspan, message) {
   tbody.innerHTML = `<tr class="empty-row"><td colspan="${colspan}">${escapeHtml(message)}</td></tr>`;
 }
 
+// Shared up/down delta pill — used by the summary card and the ranking column.
+// null → a muted em-dash (no prior-period baseline).
+function deltaHtml(percent) {
+  if (percent === null || percent === undefined) {
+    return '<span class="delta delta--flat">—</span>';
+  }
+  const up = percent >= 0;
+  const cls = up ? 'delta--up' : 'delta--down';
+  const arrow = up ? '▲' : '▼';
+  return `<span class="delta ${cls}"><i class="delta-icon">${arrow}</i>${
+    Math.abs(percent).toFixed(1).replace('.', ',')}%</span>`;
+}
+
 // Shared row builder: rank badge, outlet name, right-aligned tabular figure,
 // and a proportion bar scaled against the largest value in the set.
 function buildRankedRows(tbody, rows, maxValue, totalValue) {
@@ -363,6 +375,7 @@ function buildRankedRows(tbody, rows, maxValue, totalValue) {
       `</div></td>` +
       `<td class="col-num" title="${escapeHtml(formatRupiahFull(row.value))}">${
         formatRupiahCompact(row.value)}</td>` +
+      `<td class="col-delta">${deltaHtml(row.delta)}</td>` +
       `<td class="col-share"><div class="share-cell">` +
         `<div class="bar"><div class="bar-fill" style="width:${pctOfMax.toFixed(1)}%;animation-delay:${
           Math.min(i * 22, 200)}ms"></div></div>` +
@@ -389,7 +402,7 @@ function applyRankingMode() {
   } else {
     const note = document.getElementById('ranking-note');
     note.textContent = 'Belum ada data pada periode ini';
-    emptyRow(document.querySelector('#ranking-table tbody'), 4,
+    emptyRow(document.querySelector('#ranking-table tbody'), 5,
       'Belum ada data omzet untuk periode ini.');
   }
 }
@@ -402,7 +415,7 @@ function renderRankingBulanan() {
   const monthLabel = `${MONTH_NAMES[currentMonth - 1]} ${currentYear}`;
   if (!rows.length || grandTotal === 0) {
     note.textContent = `Total per outlet · ${monthLabel}`;
-    emptyRow(tbody, 4, 'Belum ada data omzet untuk periode ini.');
+    emptyRow(tbody, 5, 'Belum ada data omzet untuk periode ini.');
     return;
   }
   note.textContent = `Total per outlet · ${monthLabel}`;
@@ -410,6 +423,7 @@ function renderRankingBulanan() {
   buildRankedRows(tbody, rows.map((r) => ({
     name: r.outlet_name,
     value: r.total,
+    delta: outletMoM.get(r.outlet_id)?.percent ?? null,
   })), max, grandTotal);
 }
 
@@ -423,21 +437,27 @@ async function renderRankingHarian(dateStr) {
     if (rankingMode !== 'harian') return;
     if (!ranking.length) {
       note.textContent = `Tidak ada data untuk ${fmtDateLong(dateStr)}`;
-      emptyRow(tbody, 4, 'Tidak ada outlet yang melaporkan omzet pada tanggal ini.');
+      emptyRow(tbody, 5, 'Tidak ada outlet yang melaporkan omzet pada tanggal ini.');
       return;
     }
     note.textContent = `Peringkat ${fmtDateLong(dateStr)} · ${ranking.length} outlet`;
     const total = ranking.reduce((s, r) => s + r.omzet, 0);
     const max = Math.max(...ranking.map((r) => r.omzet));
+    // Harian delta = the PICKED DATE vs the same day one month earlier (e.g.
+    // 22 Juli vs 22 Juni), computed fresh from the already-loaded month data
+    // every time the date changes — this is what makes the % move with the
+    // date picker instead of staying frozen at a month-to-date figure.
+    const dayDelta = computeDayOverSameDayLastMonth(dateStr, currentDailyRows, prevMonthDailyRows);
     buildRankedRows(tbody, ranking.map((r) => ({
       rank: r.peringkat,
       name: r.outlet_name,
       brand: r.brand,
       value: r.omzet,
+      delta: dayDelta.get(r.outlet_id)?.percent ?? null,
     })), max, total);
   } catch (err) {
     note.textContent = 'Gagal memuat ranking';
-    emptyRow(tbody, 4, 'Gagal memuat data ranking.');
+    emptyRow(tbody, 5, 'Gagal memuat data ranking.');
     showToast(`Gagal memuat ranking: ${err.message}`);
   }
 }
@@ -750,9 +770,11 @@ async function loadMonth() {
 
     setLoading(false);
     currentDailyRows = dailyRows;
+    prevMonthDailyRows = prevRows;
 
     const stats = computeHeadlineStats(dailyRows, outlets);
     const mom = computeMoMComparison(dailyRows, prevRows);
+    outletMoM = computePerOutletMoM(dailyRows, prevRows);
     renderStats(stats, mom, monthLabel);
 
     renderTotalTrend(dailyRows);

@@ -130,6 +130,84 @@ export function computeMoMComparison(currentRows, prevRows) {
   return { currentTotal, prevTotal, throughDay, percent };
 }
 
+// Per-outlet version of the same same-period comparison, for the ranking table.
+// throughDay is GLOBAL (the month's latest data date across all outlets), so
+// every outlet is measured against the same cutoff — matching the summary card
+// exactly. Returns a Map outlet_id -> { currentTotal, prevTotal, percent }.
+// percent is null when that outlet had no prior-period baseline (new/empty).
+export function computePerOutletMoM(currentRows, prevRows) {
+  const throughDay = currentRows.reduce((max, r) => Math.max(max, dayOfMonth(r.report_date)), 0);
+
+  const curByOutlet = new Map();
+  currentRows.forEach((r) => {
+    curByOutlet.set(r.outlet_id, (curByOutlet.get(r.outlet_id) || 0) + r.omzet);
+  });
+
+  const prevByOutlet = new Map();
+  prevRows.forEach((r) => {
+    if (dayOfMonth(r.report_date) <= throughDay) {
+      prevByOutlet.set(r.outlet_id, (prevByOutlet.get(r.outlet_id) || 0) + r.omzet);
+    }
+  });
+
+  const result = new Map();
+  const ids = new Set([...curByOutlet.keys(), ...prevByOutlet.keys()]);
+  ids.forEach((id) => {
+    const cur = curByOutlet.get(id) || 0;
+    const prev = prevByOutlet.get(id) || 0;
+    const percent = prev > 0 && throughDay > 0 ? ((cur - prev) / prev) * 100 : null;
+    result.set(id, { currentTotal: cur, prevTotal: prev, percent });
+  });
+  return result;
+}
+
+// ---------- Day-vs-same-day-last-month (Harian ranking mode) ----------
+
+// The same-day-last-month date string, or null if that day number doesn't
+// exist in the previous month (e.g. July 31 -> June has no 31st -> no
+// baseline, not a silent wrap to June 30).
+export function sameDayPrevMonth(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const prevMonth = m === 1 ? 12 : m - 1;
+  const prevYear = m === 1 ? y - 1 : y;
+  const daysInPrevMonth = new Date(prevYear, prevMonth, 0).getDate();
+  if (d > daysInPrevMonth) return null;
+  return `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+// Per-outlet day-over-day comparison for the Harian ranking mode: the
+// SELECTED date vs the same day number one month earlier (22 Juli vs 22
+// Juni), NOT a month-to-date comparison. `dateStr` is an explicit parameter
+// specifically so that changing the date picker changes the result — the
+// bug this replaces reused the month-to-date map regardless of the picked
+// date. `currentMonthRows`/`prevMonthRows` are each month's full daily rows;
+// this function does its own date filtering internally.
+export function computeDayOverSameDayLastMonth(dateStr, currentMonthRows, prevMonthRows) {
+  const prevDateStr = sameDayPrevMonth(dateStr);
+
+  const curByOutlet = new Map();
+  currentMonthRows
+    .filter((r) => r.report_date === dateStr)
+    .forEach((r) => curByOutlet.set(r.outlet_id, (curByOutlet.get(r.outlet_id) || 0) + r.omzet));
+
+  const prevByOutlet = new Map();
+  if (prevDateStr) {
+    prevMonthRows
+      .filter((r) => r.report_date === prevDateStr)
+      .forEach((r) => prevByOutlet.set(r.outlet_id, (prevByOutlet.get(r.outlet_id) || 0) + r.omzet));
+  }
+
+  const result = new Map();
+  const ids = new Set([...curByOutlet.keys(), ...prevByOutlet.keys()]);
+  ids.forEach((id) => {
+    const cur = curByOutlet.get(id) || 0;
+    const prev = prevByOutlet.get(id) || 0;
+    const percent = prevDateStr && prev > 0 ? ((cur - prev) / prev) * 100 : null;
+    result.set(id, { currentValue: cur, prevValue: prev, percent });
+  });
+  return result;
+}
+
 export function buildTrendSeries(dailyRows, outlets, year, month) {
   const daysInMonth = new Date(year, month, 0).getDate();
   const dates = [];

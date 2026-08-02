@@ -10,6 +10,9 @@ import {
   computeMoMComparison,
   formatUpdatedAtWIB,
   computeCashOnlineSplit,
+  computePerOutletMoM,
+  sameDayPrevMonth,
+  computeDayOverSameDayLastMonth,
 } from '../js/lib/computations.mjs';
 
 test('computeMonthlySummary sums per outlet and sorts descending', () => {
@@ -214,4 +217,127 @@ test('computeCashOnlineSplit coerces string numerics (Postgres numeric can seria
   const s = computeCashOnlineSplit(rows);
   assert.equal(s.tunai, 100.5);
   assert.equal(s.online, 199.5);
+});
+
+// ---------- Per-outlet same-period MoM (ranking column) ----------
+
+test('computePerOutletMoM: per-outlet delta, prev truncated to the global throughDay', () => {
+  const current = [
+    { outlet_id: 1, report_date: '2026-08-01', omzet: 100 },
+    { outlet_id: 1, report_date: '2026-08-02', omzet: 100 },
+    { outlet_id: 2, report_date: '2026-08-01', omzet: 50 },
+  ]; // throughDay = 2
+  const prev = [
+    { outlet_id: 1, report_date: '2026-07-01', omzet: 100 },
+    { outlet_id: 1, report_date: '2026-07-02', omzet: 100 },
+    { outlet_id: 1, report_date: '2026-07-03', omzet: 9999 }, // day 3 > 2 -> excluded
+    { outlet_id: 2, report_date: '2026-07-01', omzet: 100 },
+  ];
+  const m = computePerOutletMoM(current, prev);
+  assert.equal(m.get(1).percent, 0);     // 200 vs 200
+  assert.equal(m.get(2).percent, -50);   // 50 vs 100
+});
+
+test('computePerOutletMoM: null percent when an outlet has no prior baseline', () => {
+  const current = [{ outlet_id: 1, report_date: '2026-08-01', omzet: 100 }];
+  const m = computePerOutletMoM(current, []);
+  assert.equal(m.get(1).percent, null);
+});
+
+test('computePerOutletMoM: outlet that reported last month but not this -> -100%', () => {
+  const current = [{ outlet_id: 1, report_date: '2026-08-05', omzet: 100 }]; // throughDay 5
+  const prev = [
+    { outlet_id: 1, report_date: '2026-07-05', omzet: 100 },
+    { outlet_id: 2, report_date: '2026-07-05', omzet: 200 }, // none this month
+  ];
+  const m = computePerOutletMoM(current, prev);
+  assert.equal(m.get(1).percent, 0);
+  assert.equal(m.get(2).percent, -100);  // 0 vs 200
+});
+
+test('computePerOutletMoM: a completed month compares full vs full (throughDay = last day)', () => {
+  // Viewing a finished month: latest data day is the 3rd, prev cut to <=3 = its full span.
+  const current = [
+    { outlet_id: 1, report_date: '2026-06-01', omzet: 100 },
+    { outlet_id: 1, report_date: '2026-06-03', omzet: 100 },
+  ]; // throughDay 3
+  const prev = [
+    { outlet_id: 1, report_date: '2026-05-01', omzet: 50 },
+    { outlet_id: 1, report_date: '2026-05-03', omzet: 50 },
+  ];
+  const m = computePerOutletMoM(current, prev);
+  assert.equal(m.get(1).percent, 100);   // 200 vs 100
+});
+
+// ---------- Day-vs-same-day-last-month (Harian ranking mode) ----------
+
+test('sameDayPrevMonth: basic case within the same year', () => {
+  assert.equal(sameDayPrevMonth('2026-07-22'), '2026-06-22');
+});
+
+test('sameDayPrevMonth: rolls back across a year boundary (January -> December)', () => {
+  assert.equal(sameDayPrevMonth('2026-01-15'), '2025-12-15');
+});
+
+test('sameDayPrevMonth: returns null when the day does not exist in the shorter previous month', () => {
+  // July 31 -> June has only 30 days -> no valid same-day baseline
+  assert.equal(sameDayPrevMonth('2026-07-31'), null);
+});
+
+test('sameDayPrevMonth: end-of-February edge (March 1 -> Feb has 28 days in 2026, non-leap)', () => {
+  assert.equal(sameDayPrevMonth('2026-03-01'), '2026-02-01');
+  assert.equal(sameDayPrevMonth('2026-03-29'), null); // Feb 2026 has no 29th
+});
+
+test('computeDayOverSameDayLastMonth: compares the picked date vs the same day last month', () => {
+  const current = [
+    { outlet_id: 1, report_date: '2026-07-22', omzet: 200 },
+    { outlet_id: 1, report_date: '2026-07-21', omzet: 999 }, // must be ignored — wrong date
+  ];
+  const prev = [
+    { outlet_id: 1, report_date: '2026-06-22', omzet: 100 },
+    { outlet_id: 1, report_date: '2026-06-21', omzet: 999 }, // must be ignored — wrong date
+  ];
+  const m = computeDayOverSameDayLastMonth('2026-07-22', current, prev);
+  assert.equal(m.get(1).currentValue, 200);
+  assert.equal(m.get(1).prevValue, 100);
+  assert.equal(m.get(1).percent, 100); // +100%
+});
+
+test('KEY REGRESSION: changing the picked date changes the result (was previously frozen)', () => {
+  const current = [
+    { outlet_id: 1, report_date: '2026-07-10', omzet: 100 },
+    { outlet_id: 1, report_date: '2026-07-22', omzet: 400 },
+  ];
+  const prev = [
+    { outlet_id: 1, report_date: '2026-06-10', omzet: 100 },
+    { outlet_id: 1, report_date: '2026-06-22', omzet: 100 },
+  ];
+  const day10 = computeDayOverSameDayLastMonth('2026-07-10', current, prev);
+  const day22 = computeDayOverSameDayLastMonth('2026-07-22', current, prev);
+  assert.equal(day10.get(1).percent, 0);    // 100 vs 100
+  assert.equal(day22.get(1).percent, 300);  // 400 vs 100 = +300%
+  assert.notEqual(day10.get(1).percent, day22.get(1).percent);
+});
+
+test('computeDayOverSameDayLastMonth: null percent when same-day-last-month has no data', () => {
+  const current = [{ outlet_id: 1, report_date: '2026-07-22', omzet: 200 }];
+  const prev = []; // outlet had no June 22 data
+  const m = computeDayOverSameDayLastMonth('2026-07-22', current, prev);
+  assert.equal(m.get(1).percent, null);
+});
+
+test('computeDayOverSameDayLastMonth: null percent when the previous month has no such day at all (July 31)', () => {
+  const current = [{ outlet_id: 1, report_date: '2026-07-31', omzet: 200 }];
+  const prev = [{ outlet_id: 1, report_date: '2026-06-30', omzet: 999 }]; // irrelevant, no June 31 exists
+  const m = computeDayOverSameDayLastMonth('2026-07-31', current, prev);
+  assert.equal(m.get(1).percent, null);
+});
+
+test('computeDayOverSameDayLastMonth: outlet reported last month but not on the picked date -> -100%', () => {
+  const current = []; // no outlet 1 row for July 22
+  const prev = [{ outlet_id: 1, report_date: '2026-06-22', omzet: 500 }];
+  const m = computeDayOverSameDayLastMonth('2026-07-22', current, prev);
+  assert.equal(m.get(1).currentValue, 0);
+  assert.equal(m.get(1).percent, -100);
 });
