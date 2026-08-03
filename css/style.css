@@ -476,6 +476,23 @@ main > *:nth-child(5) { animation-delay: .26s; }
 .delta--flat { color: var(--ink-muted); font-weight: 600; }
 .delta-icon { font-style: normal; margin-right: 2px; font-size: 0.82em; }
 
+/* Percent + nominal, stacked — same on desktop and mobile so the ranking
+   column never has to fight for horizontal space. */
+.delta-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  line-height: 1.2;
+}
+.delta-amount {
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  opacity: 0.82;
+}
+
 /* ============================================================
    Panels
    ============================================================ */
@@ -562,7 +579,7 @@ main > *:nth-child(5) { animation-delay: .26s; }
 .data-table tbody tr:hover { background: var(--brand-wash-2); }
 
 .col-rank { width: 46px; }
-.col-delta { width: 92px; }
+.col-delta { width: 104px; }
 .col-share { width: 26%; min-width: 130px; }
 
 /* element+class specificity, so these beat the generic `.data-table th` rule */
@@ -777,8 +794,14 @@ tbody tr:nth-child(3) .rank-badge { background: var(--brand-wash-2); color: var(
 
   .panel-head { padding: 15px 16px 13px; }
 
-  /* the share column is the first thing to sacrifice on a narrow screen */
+  /* the share column is the first thing to sacrifice on a narrow screen,
+     then the brand pill — both free up width for the delta column's
+     stacked %+nominal without forcing horizontal scroll on the table */
   .col-share, .data-table td.col-share { display: none; }
+  .brand-tag { display: none; }
+
+  .col-delta { width: 78px; }
+  .delta-amount { font-size: 10px; }
 
   .data-table th, .data-table td { padding: 10px 12px; }
 

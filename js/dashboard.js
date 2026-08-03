@@ -13,6 +13,7 @@ import {
   computeCashOnlineSplit,
   formatRupiahCompact,
   formatRupiahFull,
+  formatSignedRupiahCompact,
   formatUpdatedAtWIB,
 } from './lib/computations.mjs';
 
@@ -348,16 +349,23 @@ function emptyRow(tbody, colspan, message) {
 }
 
 // Shared up/down delta pill — used by the summary card and the ranking column.
-// null → a muted em-dash (no prior-period baseline).
-function deltaHtml(percent) {
+// null → a muted em-dash (no prior-period baseline). `amount`, when given, is
+// the SAME nominal difference the percent was computed from (cur - prev) —
+// rendered as a small line underneath, never recomputed here. Omitted amount
+// (the summary card's call) keeps the original single-line behavior.
+function deltaHtml(percent, amount) {
   if (percent === null || percent === undefined) {
     return '<span class="delta delta--flat">—</span>';
   }
   const up = percent >= 0;
   const cls = up ? 'delta--up' : 'delta--down';
   const arrow = up ? '▲' : '▼';
-  return `<span class="delta ${cls}"><i class="delta-icon">${arrow}</i>${
+  const pctLine = `<span class="delta ${cls}"><i class="delta-icon">${arrow}</i>${
     Math.abs(percent).toFixed(1).replace('.', ',')}%</span>`;
+  if (amount === null || amount === undefined) return pctLine;
+  const amtLine = `<span class="delta-amount ${cls}">${
+    escapeHtml(formatSignedRupiahCompact(amount))}</span>`;
+  return `<span class="delta-group">${pctLine}${amtLine}</span>`;
 }
 
 // Shared row builder: rank badge, outlet name, right-aligned tabular figure,
@@ -375,7 +383,7 @@ function buildRankedRows(tbody, rows, maxValue, totalValue) {
       `</div></td>` +
       `<td class="col-num" title="${escapeHtml(formatRupiahFull(row.value))}">${
         formatRupiahCompact(row.value)}</td>` +
-      `<td class="col-delta">${deltaHtml(row.delta)}</td>` +
+      `<td class="col-delta">${deltaHtml(row.delta, row.deltaAmount)}</td>` +
       `<td class="col-share"><div class="share-cell">` +
         `<div class="bar"><div class="bar-fill" style="width:${pctOfMax.toFixed(1)}%;animation-delay:${
           Math.min(i * 22, 200)}ms"></div></div>` +
@@ -420,11 +428,16 @@ function renderRankingBulanan() {
   }
   note.textContent = `Total per outlet · ${monthLabel}`;
   const max = rows[0].total;
-  buildRankedRows(tbody, rows.map((r) => ({
-    name: r.outlet_name,
-    value: r.total,
-    delta: outletMoM.get(r.outlet_id)?.percent ?? null,
-  })), max, grandTotal);
+  buildRankedRows(tbody, rows.map((r) => {
+    const m = outletMoM.get(r.outlet_id);
+    return {
+      name: r.outlet_name,
+      value: r.total,
+      delta: m?.percent ?? null,
+      // Same currentTotal/prevTotal the % above was divided from — not recomputed.
+      deltaAmount: m ? m.currentTotal - m.prevTotal : null,
+    };
+  }), max, grandTotal);
 }
 
 async function renderRankingHarian(dateStr) {
@@ -448,13 +461,18 @@ async function renderRankingHarian(dateStr) {
     // every time the date changes — this is what makes the % move with the
     // date picker instead of staying frozen at a month-to-date figure.
     const dayDelta = computeDayOverSameDayLastMonth(dateStr, currentDailyRows, prevMonthDailyRows);
-    buildRankedRows(tbody, ranking.map((r) => ({
-      rank: r.peringkat,
-      name: r.outlet_name,
-      brand: r.brand,
-      value: r.omzet,
-      delta: dayDelta.get(r.outlet_id)?.percent ?? null,
-    })), max, total);
+    buildRankedRows(tbody, ranking.map((r) => {
+      const d = dayDelta.get(r.outlet_id);
+      return {
+        rank: r.peringkat,
+        name: r.outlet_name,
+        brand: r.brand,
+        value: r.omzet,
+        delta: d?.percent ?? null,
+        // Same currentValue/prevValue the % above was divided from — not recomputed.
+        deltaAmount: d ? d.currentValue - d.prevValue : null,
+      };
+    }), max, total);
   } catch (err) {
     note.textContent = 'Gagal memuat ranking';
     emptyRow(tbody, 5, 'Gagal memuat data ranking.');

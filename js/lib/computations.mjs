@@ -84,6 +84,16 @@ export function formatRupiahCompact(value) {
   return `${sign}Rp ${Math.round(abs)}`;
 }
 
+// Compact form with an explicit sign, for a nominal delta line under a %
+// (e.g. "+Rp 2 jt" / "-Rp 1,6 jt"). formatRupiahCompact already renders its
+// own leading "-" for negatives, so only positives (including zero) get a
+// "+" prefixed here — never a double sign.
+export function formatSignedRupiahCompact(value) {
+  const n = Number(value) || 0;
+  const sign = n >= 0 ? '+' : '';
+  return `${sign}${formatRupiahCompact(n)}`;
+}
+
 // Exact form for tooltips and drill-downs: "Rp 442.301.845".
 export function formatRupiahFull(value) {
   const n = Math.round(Number(value) || 0);

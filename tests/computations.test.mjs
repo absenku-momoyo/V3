@@ -13,6 +13,7 @@ import {
   computePerOutletMoM,
   sameDayPrevMonth,
   computeDayOverSameDayLastMonth,
+  formatSignedRupiahCompact,
 } from '../js/lib/computations.mjs';
 
 test('computeMonthlySummary sums per outlet and sorts descending', () => {
@@ -340,4 +341,20 @@ test('computeDayOverSameDayLastMonth: outlet reported last month but not on the 
   const m = computeDayOverSameDayLastMonth('2026-07-22', current, prev);
   assert.equal(m.get(1).currentValue, 0);
   assert.equal(m.get(1).percent, -100);
+});
+
+// ---------- Signed compact rupiah (nominal delta under the % in Peringkat) ----------
+
+test('formatSignedRupiahCompact prefixes a positive delta with "+"', () => {
+  assert.equal(formatSignedRupiahCompact(2000000), '+Rp 2 jt');
+  assert.equal(formatSignedRupiahCompact(442301845), '+Rp 442,3 jt');
+});
+
+test('formatSignedRupiahCompact does NOT double up the sign on a negative delta', () => {
+  // formatRupiahCompact already renders its own leading "-" for negatives.
+  assert.equal(formatSignedRupiahCompact(-1600000), '-Rp 1,6 jt');
+});
+
+test('formatSignedRupiahCompact treats zero as non-negative (gets a "+")', () => {
+  assert.equal(formatSignedRupiahCompact(0), '+Rp 0');
 });
